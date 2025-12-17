@@ -3,7 +3,7 @@ import OrdersList from "./components/OrderList";
 import OrderForm from "./components/OrderForm";
 import DashboardStats from "./components/DashboardStats";
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
 function App() {
 	const [orders, setOrders] = useState([]);
