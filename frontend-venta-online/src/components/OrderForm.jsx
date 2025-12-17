@@ -63,6 +63,14 @@ export default function OrderForm({ onSuccess, order }) {
 
 	return (
 		<form onSubmit={handleSubmit}>
+			{order && (
+				<div>
+					<strong>Order Number:</strong> {order.order_number} <br />
+					<strong>Created At:</strong>{" "}
+					{new Date(order.created_at).toLocaleString()}
+				</div>
+			)}
+
 			<input
 				placeholder="Name"
 				value={form.customer_name}
@@ -78,6 +86,7 @@ export default function OrderForm({ onSuccess, order }) {
 				onChange={(e) =>
 					setForm({ ...form, customer_email: e.target.value })
 				}
+				required
 				disabled={!isEditable}
 			/>
 			<input

@@ -19,6 +19,7 @@ return new class extends Migration
 			$table->string('customer_phone')->nullable();
 			$table->decimal('total_amount', 10, 2)->default(0);
 			$table->enum('status', ['CREATED', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'])->default('CREATED');
+			$table->string('order_number')->unique();
 			$table->timestamps();
 		});
 	}

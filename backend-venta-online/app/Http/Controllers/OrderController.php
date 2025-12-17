@@ -14,8 +14,11 @@ class OrderController extends Controller
 	 */
 	public function index()
 	{
-		$orders = Order::with('items')->get()->map(function ($order) {
+		$orders = Order::with('items', 'statusLogs')->get()->map(function ($order) {
 			$order->allowed_transitions = $order->getAllowedTransitions();
+			// Asegurar que los campos opcionales no sean null
+			$order->customer_email = $order->customer_email ?? '';
+			$order->customer_phone = $order->customer_phone ?? '';
 			return $order;
 		});
 
@@ -29,7 +32,7 @@ class OrderController extends Controller
 	{
 		$data = $request->validate([
 			'customer_name' => 'required|string|max:255',
-			'customer_email' => 'nullable|email|max:255',
+			'customer_email' => 'required|email|max:255',
 			'customer_phone' => 'nullable|string|max:50',
 			'total_amount' => 'required|numeric|min:0',
 			'items' => 'required|array|min:1',
@@ -38,24 +41,38 @@ class OrderController extends Controller
 			'items.*.unit_price' => 'required|numeric|min:0',
 		]);
 
+		do {
+			$orderNumber = 'ES' . mt_rand(100000, 999999);
+		} while (Order::where('order_number', $orderNumber)->exists());
+
 		$order = Order::create([
+			'order_number' => $orderNumber,
 			'customer_name' => $data['customer_name'],
-			'customer_email' => $data['customer_email'] ?? null,
+			'customer_email' => $data['customer_email'],
 			'customer_phone' => $data['customer_phone'] ?? null,
 			'total_amount' => $data['total_amount'],
 		]);
 
 		$order->items()->createMany($data['items']);
 
-		return response()->json($order->load('items'), 201);
+		$order->customer_email = $order->customer_email ?? '';
+		$order->customer_phone = $order->customer_phone ?? '';
+
+		return response()->json($order->load('items', 'statusLogs'), 201);
 	}
+
 
 	/**
 	 * Show a single order with items
 	 */
 	public function show(Order $order)
 	{
-		return response()->json($order->load('items'), 200);
+		$order->load('items', 'statusLogs');
+		$order->customer_email = $order->customer_email ?? '';
+		$order->customer_phone = $order->customer_phone ?? '';
+		$order->allowed_transitions = $order->getAllowedTransitions();
+
+		return response()->json($order, 200);
 	}
 
 	/**
@@ -72,8 +89,8 @@ class OrderController extends Controller
 
 		$data = $request->validate([
 			'customer_name' => 'sometimes|string|max:255',
-			'customer_email' => 'sometimes|email|max:255',
-			'customer_phone' => 'sometimes|string|max:50',
+			'customer_email' => 'sometimes|nullable|email|max:255',
+			'customer_phone' => 'sometimes|nullable|string|max:50',
 			'total_amount' => 'sometimes|numeric|min:0',
 			'items' => 'sometimes|array|min:1',
 			'items.*.id' => 'sometimes|integer|exists:order_items,id',
@@ -101,7 +118,12 @@ class OrderController extends Controller
 			}
 		}
 
-		return response()->json($order->load('items'), 200);
+		$order->load('items', 'statusLogs');
+		$order->customer_email = $order->customer_email ?? '';
+		$order->customer_phone = $order->customer_phone ?? '';
+		$order->allowed_transitions = $order->getAllowedTransitions();
+
+		return response()->json($order, 200);
 	}
 
 	/**
@@ -111,14 +133,21 @@ class OrderController extends Controller
 	{
 		$data = $request->validate([
 			'status' => ['required', Rule::in(Order::STATUSES)],
+			'message' => 'nullable|string|max:500', // optional message
 		]);
 
 		$newStatus = $data['status'];
+		$message = $data['message'] ?? null;
 
 		if ($order->status === $newStatus) {
+			$order->load('items', 'statusLogs');
+			$order->customer_email = $order->customer_email ?? '';
+			$order->customer_phone = $order->customer_phone ?? '';
+			$order->allowed_transitions = $order->getAllowedTransitions();
+
 			return response()->json([
 				'message' => 'Status is already set to ' . $newStatus,
-				'order' => $order->load('items')
+				'order' => $order
 			], 200);
 		}
 
@@ -135,9 +164,25 @@ class OrderController extends Controller
 		$order->status = $newStatus;
 		$order->save();
 
+		if (in_array($newStatus, ['CANCELLED', 'RETURNED'])) {
+			$defaultMessage = $newStatus === 'CANCELLED'
+				? 'Order cancelled by user/system.'
+				: 'Order returned from shipment.';
+
+			$order->statusLogs()->create([
+				'status' => $newStatus,
+				'message' => $message ?? $defaultMessage,
+			]);
+		}
+
+		$order->load('items', 'statusLogs');
+		$order->customer_email = $order->customer_email ?? '';
+		$order->customer_phone = $order->customer_phone ?? '';
+		$order->allowed_transitions = $order->getAllowedTransitions();
+
 		return response()->json([
 			'message' => 'Status updated successfully',
-			'order' => $order->load('items')
+			'order' => $order
 		], 200);
 	}
 }
